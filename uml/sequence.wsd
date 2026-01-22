@@ -1,0 +1,116 @@
+@startuml sequence
+title Academic Program Management - Sequence Diagram
+
+actor Admin
+participant "Admin Dashboard" as UI
+participant "ProgramController" as Controller
+participant "ProgramService" as Service
+participant "ProgramValidator" as Validator
+participant "Database" as DB
+participant "CacheService" as Cache
+
+== View Academic Programs Flow ==
+Admin -> UI: Navigate to Programs page
+UI -> Controller: GET /api/programs
+Controller -> Service: getAllPrograms()
+Service -> Cache: checkCache("programs_list")
+
+alt Cache Hit
+    Cache --> Service: Return cached programs
+else Cache Miss
+    Service -> DB: SELECT * FROM programs
+    DB --> Service: Return programs list
+    Service -> Cache: store("programs_list", programs)
+end
+
+Service --> Controller: Return programs data
+Controller --> UI: 200 OK (programs list)
+UI --> Admin: Display programs table
+
+== Create New Academic Program Flow ==
+Admin -> UI: Click "Add New Program"
+UI --> Admin: Display program form
+Admin -> UI: Fill form and submit
+UI -> Controller: POST /api/programs
+Controller -> Validator: validate(programData)
+
+alt Validation Success
+    Validator --> Controller: Valid
+    Controller -> Service: createProgram(programData)
+    Service -> DB: INSERT INTO programs
+    DB --> Service: Return new program ID
+    Service -> Cache: invalidate("programs_list")
+    Service --> Controller: Return created program
+    Controller --> UI: 201 Created
+    UI --> Admin: Show success message
+else Validation Failure
+    Validator --> Controller: Validation errors
+    Controller --> UI: 400 Bad Request (errors)
+    UI --> Admin: Display error messages
+end
+
+== Update Academic Program Flow ==
+Admin -> UI: Click "Edit" on program
+UI -> Controller: GET /api/programs/{id}
+Controller -> Service: getProgramById(id)
+Service -> DB: SELECT * FROM programs WHERE id=?
+DB --> Service: Return program details
+Service --> Controller: Return program data
+Controller --> UI: 200 OK (program data)
+UI --> Admin: Display pre-filled form
+
+Admin -> UI: Modify fields and submit
+UI -> Controller: PUT /api/programs/{id}
+Controller -> Validator: validate(updatedData)
+
+alt Validation Success
+    Validator --> Controller: Valid
+    Controller -> Service: updateProgram(id, updatedData)
+    Service -> DB: UPDATE programs SET ... WHERE id=?
+    DB --> Service: Return updated program
+    Service -> Cache: invalidate("programs_list")
+    Service -> Cache: invalidate("program_" + id)
+    Service --> Controller: Return updated program
+    Controller --> UI: 200 OK
+    UI --> Admin: Show success message
+else Validation Failure
+    Validator --> Controller: Validation errors
+    Controller --> UI: 400 Bad Request (errors)
+    UI --> Admin: Display error messages
+end
+
+== Delete Academic Program Flow ==
+Admin -> UI: Click "Delete" on program
+UI --> Admin: Show confirmation dialog
+Admin -> UI: Confirm deletion
+UI -> Controller: DELETE /api/programs/{id}
+Controller -> Service: deleteProgram(id)
+
+Service -> DB: Check if program has courses
+DB --> Service: Return course count
+
+alt Has Associated Courses
+    Service --> Controller: Error (program in use)
+    Controller --> UI: 409 Conflict
+    UI --> Admin: Show error (cannot delete)
+else No Courses
+    Service -> DB: DELETE FROM programs WHERE id=?
+    DB --> Service: Deletion successful
+    Service -> Cache: invalidate("programs_list")
+    Service -> Cache: invalidate("program_" + id)
+    Service --> Controller: Success
+    Controller --> UI: 204 No Content
+    UI --> Admin: Remove from table & show success
+end
+
+== Search/Filter Programs Flow ==
+Admin -> UI: Enter search criteria
+UI -> Controller: GET /api/programs?search={query}
+Controller -> Service: searchPrograms(query)
+Service -> DB: SELECT * FROM programs WHERE name LIKE ?
+DB --> Service: Return filtered programs
+Service --> Controller: Return results
+Controller --> UI: 200 OK (filtered list)
+UI --> Admin: Display filtered results
+
+@enduml
